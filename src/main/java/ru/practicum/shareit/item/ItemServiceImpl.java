@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.shareit.booking.BookingRepository;
 import ru.practicum.shareit.booking.model.Booking;
 import ru.practicum.shareit.booking.model.Booking.BookingStatus;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class ItemServiceImpl implements ItemService {
     private final ItemRepository itemRepository;
     private final UserRepository userRepository;
@@ -37,6 +39,7 @@ public class ItemServiceImpl implements ItemService {
     private final CommentRepository commentRepository;
 
     @Override
+    @Transactional
     public ItemDto create(Long ownerId, ItemDto itemDto) {
         User owner = getUserOrThrow(ownerId);
         Item item = ItemMapper.toEntity(itemDto);
@@ -47,6 +50,7 @@ public class ItemServiceImpl implements ItemService {
     }
 
     @Override
+    @Transactional
     public ItemDto update(Long ownerId, Long itemId, ItemDto itemDto) {
         Item item = getItemOrThrow(itemId);
         if (!item.getOwner().getId().equals(ownerId)) {
@@ -126,6 +130,7 @@ public class ItemServiceImpl implements ItemService {
     }
 
     @Override
+    @Transactional
     public CommentDto addComment(Long userId, Long itemId, CommentDto commentDto) {
         User author = getUserOrThrow(userId);
         Item item = getItemOrThrow(itemId);
