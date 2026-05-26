@@ -1,50 +1,53 @@
 package ru.practicum.shareit.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.Objects;
+import java.util.Map;
 
 @RestControllerAdvice
+@Slf4j
 public class ErrorHandler {
 
-    @ExceptionHandler
+    @ExceptionHandler(NotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
-    public ErrorResponse handleNotFound(final NotFoundException e) {
-        return new ErrorResponse(e.getMessage());
+    public Map<String, String> handleNotFound(NotFoundException e) {
+        log.error(e.getMessage());
+        return Map.of("error", e.getMessage());
     }
 
-    @ExceptionHandler
+    @ExceptionHandler(ConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    public ErrorResponse handleConflict(final ConflictException e) {
-        return new ErrorResponse(e.getMessage());
+    public Map<String, String> handleConflict(ConflictException e) {
+        log.error(e.getMessage());
+        return Map.of("error", e.getMessage());
     }
 
-    @ExceptionHandler
+    @ExceptionHandler(ForbiddenException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Map<String, String> handleForbidden(ForbiddenException e) {
+        log.error(e.getMessage());
+        return Map.of("error", e.getMessage());
+    }
+
+    @ExceptionHandler({BadRequestException.class, MethodArgumentNotValidException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleValidation(final ValidationException e) {
-        return new ErrorResponse(e.getMessage());
+    public Map<String, String> handleBadRequest(Exception e) {
+        String message = e instanceof MethodArgumentNotValidException
+                ? "Validation error: " + e.getMessage()
+                : e.getMessage();
+        log.error(message);
+        return Map.of("error", message);
     }
 
-    @ExceptionHandler
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleMethodArgumentNotValid(final MethodArgumentNotValidException e) {
-        return new ErrorResponse(Objects.requireNonNull(e.getFieldError()).getDefaultMessage());
-    }
-
-    @ExceptionHandler
+    @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ErrorResponse handleThrowable(final Throwable e) {
-        return new ErrorResponse("Произошла непредвиденная ошибка: " + e.getMessage());
-    }
-
-    @ExceptionHandler
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleMissingRequestHeader(final MissingRequestHeaderException e) {
-        return new ErrorResponse("Отсутствует заголовок: " + e.getHeaderName());
+    public Map<String, String> handleInternal(Exception e) {
+        log.error("Internal server error", e);
+        return Map.of("error", "Internal server error");
     }
 }
