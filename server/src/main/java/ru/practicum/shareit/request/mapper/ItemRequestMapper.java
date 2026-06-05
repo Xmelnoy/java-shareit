@@ -24,7 +24,9 @@ public class ItemRequestMapper {
                 .description(request.getDescription())
                 .created(request.getCreated())
                 .items(items)
-                .requestor(UserMapper.toDto(request.getRequestor()))
+                .requestor(request.getRequestor() != null
+                        ? UserMapper.toDto(request.getRequestor())
+                        : null)
                 .build();
     }
 }
