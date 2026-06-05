@@ -1,45 +1,42 @@
 package ru.practicum.shareit.item;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import ru.practicum.shareit.booking.BookingMapper;
+import org.springframework.data.domain.Sort;
 import ru.practicum.shareit.booking.BookingRepository;
-import ru.practicum.shareit.exception.AccessException;
+import ru.practicum.shareit.booking.model.Booking;
+import ru.practicum.shareit.booking.model.Booking.BookingStatus;
+import ru.practicum.shareit.exception.BadRequestException;
+import ru.practicum.shareit.exception.ForbiddenException;
 import ru.practicum.shareit.exception.NotFoundException;
-import ru.practicum.shareit.item.comment.CommentMapper;
 import ru.practicum.shareit.item.comment.CommentRepository;
-import ru.practicum.shareit.item.comment.dto.CommentDto;
-import ru.practicum.shareit.item.comment.dto.NewCommentRequest;
-import ru.practicum.shareit.item.comment.model.Comment;
-import ru.practicum.shareit.item.dto.ItemBooking;
+import ru.practicum.shareit.item.dto.CommentDto;
 import ru.practicum.shareit.item.dto.ItemDto;
-import ru.practicum.shareit.item.dto.NewItemRequest;
-import ru.practicum.shareit.item.dto.UpdateItemRequest;
+import ru.practicum.shareit.item.dto.ItemResponseDto;
+import ru.practicum.shareit.item.model.Comment;
 import ru.practicum.shareit.item.model.Item;
-import ru.practicum.shareit.request.ItemRequest;
-import ru.practicum.shareit.request.ItemRequestRepository;
 import ru.practicum.shareit.user.UserRepository;
 import ru.practicum.shareit.user.model.User;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("Тесты сервиса вещей")
 class ItemServiceImplTest {
 
     @Mock
@@ -50,333 +47,276 @@ class ItemServiceImplTest {
     private BookingRepository bookingRepository;
     @Mock
     private CommentRepository commentRepository;
-    @Mock
-    private ItemRequestRepository itemRequestRepository;
-    @Mock
-    private ItemMapper itemMapper;
-    @Mock
-    private CommentMapper commentMapper;
-    @Mock
-    private BookingMapper bookingMapper;
 
     @InjectMocks
     private ItemServiceImpl itemService;
 
-    private User owner;
-    private User booker;
-    private Item item;
-    private NewItemRequest newItemRequest;
-    private UpdateItemRequest updateItemRequest;
-    private ItemDto itemDto;
-    private ItemBooking itemBooking;
-    private NewCommentRequest commentRequest;
-    private Comment comment;
-    private CommentDto commentDto;
+    private User owner() {
+        return User.builder().id(1L).name("Owner").email("owner@mail.com").build();
+    }
 
-    @BeforeEach
-    void setUp() {
-        owner = new User();
-        owner.setUserId(1L);
-        owner.setName("Владелец");
-        owner.setEmail("owner@test.com");
-
-        booker = new User();
-        booker.setUserId(2L);
-        booker.setName("Бронер");
-        booker.setEmail("booker@test.com");
-
-        item = new Item();
-        item.setItemId(1L);
-        item.setName("Дрель");
-        item.setDescription("Мощная дрель");
-        item.setAvailable(true);
-        item.setOwner(owner);
-
-        newItemRequest = new NewItemRequest();
-        newItemRequest.setName("Дрель");
-        newItemRequest.setDescription("Мощная дрель");
-        newItemRequest.setAvailable(true);
-
-        updateItemRequest = new UpdateItemRequest();
-        updateItemRequest.setName("Обновленная дрель");
-
-        itemDto = new ItemDto();
-        itemDto.setId(1L);
-        itemDto.setName("Дрель");
-
-        itemBooking = new ItemBooking();
-        itemBooking.setId(1L);
-        itemBooking.setName("Дрель");
-
-        commentRequest = new NewCommentRequest();
-        commentRequest.setText("Отличная вещь!");
-
-        comment = new Comment();
-        comment.setId(1L);
-        comment.setText("Отличная вещь!");
-        comment.setCreated(LocalDateTime.now());
-
-        commentDto = new CommentDto();
-        commentDto.setId(1L);
-        commentDto.setText("Отличная вещь!");
-        commentDto.setAuthorName("Бронер");
+    private Item item(Long id, User owner) {
+        return Item.builder()
+                .id(id)
+                .name("Drill")
+                .description("Powerful drill")
+                .available(true)
+                .owner(owner)
+                .build();
     }
 
     @Test
-    @DisplayName("addItem - должен создавать вещь")
-    void addItem_shouldCreateItem() {
+    void create_success() {
+        User owner = owner();
+        ItemDto dto = ItemDto.builder().name("Drill").description("Powerful drill").available(true).build();
         when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemMapper.newItemRequest(any(NewItemRequest.class))).thenReturn(item);
-        when(itemRepository.save(any(Item.class))).thenReturn(item);
-        when(itemMapper.toItemDto(any(Item.class))).thenReturn(itemDto);
+        when(itemRepository.save(any(Item.class))).thenAnswer(inv -> {
+            Item i = inv.getArgument(0);
+            i.setId(10L);
+            return i;
+        });
 
-        ItemDto result = itemService.addItem(1L, newItemRequest);
+        ItemDto result = itemService.create(1L, dto);
 
-        assertThat(result.getId()).isEqualTo(1L);
-        verify(itemRepository).save(any(Item.class));
+        assertThat(result.getId()).isEqualTo(10L);
+        assertThat(result.getName()).isEqualTo("Drill");
+        assertThat(result.getAvailable()).isTrue();
+
+        ArgumentCaptor<Item> captor = ArgumentCaptor.forClass(Item.class);
+        verify(itemRepository).save(captor.capture());
+        assertThat(captor.getValue().getOwner()).isEqualTo(owner);
     }
 
     @Test
-    @DisplayName("addItem - должен создавать вещь с запросом")
-    void addItem_shouldCreateItemWithRequest() {
-        newItemRequest.setRequestId(10L);
-        ItemRequest itemRequest = new ItemRequest();
-        itemRequest.setId(10L);
+    void create_userNotFound_throwsNotFound() {
+        ItemDto dto = ItemDto.builder().name("Drill").description("d").available(true).build();
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
+        assertThatThrownBy(() -> itemService.create(1L, dto))
+                .isInstanceOf(NotFoundException.class);
+        verify(itemRepository, never()).save(any());
+    }
+
+    @Test
+    void update_partial_success() {
+        User owner = owner();
+        Item existing = item(5L, owner);
+        ItemDto dto = ItemDto.builder().name("New name").description("New desc").available(false).build();
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(existing));
+        when(itemRepository.save(any(Item.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ItemDto result = itemService.update(1L, 5L, dto);
+
+        assertThat(result.getName()).isEqualTo("New name");
+        assertThat(result.getDescription()).isEqualTo("New desc");
+        assertThat(result.getAvailable()).isFalse();
+    }
+
+    @Test
+    void update_onlyName_keepsOthers() {
+        User owner = owner();
+        Item existing = item(5L, owner);
+        ItemDto dto = ItemDto.builder().name("Only name").build();
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(existing));
+        when(itemRepository.save(any(Item.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ItemDto result = itemService.update(1L, 5L, dto);
+
+        assertThat(result.getName()).isEqualTo("Only name");
+        assertThat(result.getDescription()).isEqualTo("Powerful drill");
+        assertThat(result.getAvailable()).isTrue();
+    }
+
+    @Test
+    void update_notOwner_throwsForbidden() {
+        User owner = owner();
+        Item existing = item(5L, owner);
+        ItemDto dto = ItemDto.builder().name("x").build();
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> itemService.update(999L, 5L, dto))
+                .isInstanceOf(ForbiddenException.class);
+        verify(itemRepository, never()).save(any());
+    }
+
+    @Test
+    void update_itemNotFound_throwsNotFound() {
+        when(itemRepository.findById(5L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> itemService.update(1L, 5L, ItemDto.builder().name("x").build()))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void getById_owner_withBookingsAndComments() {
+        User owner = owner();
+        Item itm = item(5L, owner);
+        User booker = User.builder().id(2L).name("Booker").email("b@mail.com").build();
+
+        Comment comment = Comment.builder()
+                .id(1L).text("Great").item(itm).author(booker).created(LocalDateTime.now()).build();
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(itm));
+        when(commentRepository.findByItemId(5L)).thenReturn(List.of(comment));
+
+        Booking last = Booking.builder().id(100L).booker(booker)
+                .start(LocalDateTime.now().minusDays(2)).end(LocalDateTime.now().minusDays(1))
+                .status(BookingStatus.APPROVED).build();
+        Booking next = Booking.builder().id(101L).booker(booker)
+                .start(LocalDateTime.now().plusDays(1)).end(LocalDateTime.now().plusDays(2))
+                .status(BookingStatus.APPROVED).build();
+        when(bookingRepository.findByItemIdAndStatusAndStartBefore(eq(5L), eq(BookingStatus.APPROVED), any(), any(Sort.class)))
+                .thenReturn(List.of(last));
+        when(bookingRepository.findByItemIdAndStatusAndStartAfter(eq(5L), eq(BookingStatus.APPROVED), any(), any(Sort.class)))
+                .thenReturn(List.of(next));
+
+        ItemResponseDto result = itemService.getById(1L, 5L);
+
+        assertThat(result.getId()).isEqualTo(5L);
+        assertThat(result.getComments()).hasSize(1);
+        assertThat(result.getComments().get(0).getAuthorName()).isEqualTo("Booker");
+        assertThat(result.getLastBooking()).isNotNull();
+        assertThat(result.getLastBooking().getId()).isEqualTo(100L);
+        assertThat(result.getLastBooking().getBookerId()).isEqualTo(2L);
+        assertThat(result.getNextBooking()).isNotNull();
+        assertThat(result.getNextBooking().getId()).isEqualTo(101L);
+    }
+
+    @Test
+    void getById_owner_noBookings_nullBookings() {
+        User owner = owner();
+        Item itm = item(5L, owner);
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(itm));
+        when(commentRepository.findByItemId(5L)).thenReturn(Collections.emptyList());
+        when(bookingRepository.findByItemIdAndStatusAndStartBefore(eq(5L), any(), any(), any(Sort.class)))
+                .thenReturn(Collections.emptyList());
+        when(bookingRepository.findByItemIdAndStatusAndStartAfter(eq(5L), any(), any(), any(Sort.class)))
+                .thenReturn(Collections.emptyList());
+
+        ItemResponseDto result = itemService.getById(1L, 5L);
+
+        assertThat(result.getLastBooking()).isNull();
+        assertThat(result.getNextBooking()).isNull();
+    }
+
+    @Test
+    void getById_notOwner_noBookings() {
+        User owner = owner();
+        Item itm = item(5L, owner);
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(itm));
+        when(commentRepository.findByItemId(5L)).thenReturn(Collections.emptyList());
+
+        ItemResponseDto result = itemService.getById(999L, 5L);
+
+        assertThat(result.getLastBooking()).isNull();
+        assertThat(result.getNextBooking()).isNull();
+        verify(bookingRepository, never()).findByItemIdAndStatusAndStartBefore(anyLong(), any(), any(), any(Sort.class));
+    }
+
+    @Test
+    void getById_notFound_throwsNotFound() {
+        when(itemRepository.findById(5L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> itemService.getById(1L, 5L))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void getAllByOwner_returnsListWithBookings() {
+        User owner = owner();
+        Item itm = item(5L, owner);
+        User booker = User.builder().id(2L).name("Booker").email("b@mail.com").build();
         when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemMapper.newItemRequest(any(NewItemRequest.class))).thenReturn(item);
-        when(itemRequestRepository.findById(10L)).thenReturn(Optional.of(itemRequest));
-        when(itemRepository.save(any(Item.class))).thenReturn(item);
-        when(itemMapper.toItemDto(any(Item.class))).thenReturn(itemDto);
+        when(itemRepository.findByOwnerId(1L)).thenReturn(List.of(itm));
+        when(commentRepository.findByItemId(5L)).thenReturn(Collections.emptyList());
 
-        ItemDto result = itemService.addItem(1L, newItemRequest);
+        Booking last = Booking.builder().id(100L).booker(booker)
+                .start(LocalDateTime.now().minusDays(2)).end(LocalDateTime.now().minusDays(1))
+                .status(BookingStatus.APPROVED).build();
+        when(bookingRepository.findByItemIdAndStatusAndStartBefore(eq(5L), any(), any(), any(Sort.class)))
+                .thenReturn(List.of(last));
+        when(bookingRepository.findByItemIdAndStatusAndStartAfter(eq(5L), any(), any(), any(Sort.class)))
+                .thenReturn(Collections.emptyList());
 
-        assertThat(result.getId()).isEqualTo(1L);
-        verify(itemRequestRepository).findById(10L);
+        List<ItemResponseDto> result = itemService.getAllByOwner(1L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getLastBooking()).isNotNull();
+        assertThat(result.get(0).getNextBooking()).isNull();
     }
 
     @Test
-    @DisplayName("addItem - должен выбрасывать NotFoundException, если пользователь не найден")
-    void addItem_shouldThrowNotFoundException_whenUserNotFound() {
-        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+    void getAllByOwner_userNotFound_throwsNotFound() {
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> itemService.addItem(99L, newItemRequest))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("не найден");
+        assertThatThrownBy(() -> itemService.getAllByOwner(1L))
+                .isInstanceOf(NotFoundException.class);
     }
 
     @Test
-    @DisplayName("addItem - должен выбрасывать NotFoundException, если запрос не найден")
-    void addItem_shouldThrowNotFoundException_whenRequestNotFound() {
-        newItemRequest.setRequestId(99L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemMapper.newItemRequest(any(NewItemRequest.class))).thenReturn(item);
-        when(itemRequestRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> itemService.addItem(1L, newItemRequest))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("не найден");
+    void search_nullText_returnsEmpty() {
+        assertThat(itemService.search(null)).isEmpty();
+        verify(itemRepository, never()).search(any());
     }
 
     @Test
-    @DisplayName("updateItem - должен обновлять вещь")
-    void updateItem_shouldUpdateItem() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(itemMapper.toItemDto(any(Item.class))).thenReturn(itemDto);
-
-        ItemDto result = itemService.updateItem(1L, 1L, updateItemRequest);
-
-        assertThat(result.getId()).isEqualTo(1L);
-        verify(itemMapper).updateItemFromRequest(any(Item.class), any(UpdateItemRequest.class));
+    void search_blankText_returnsEmpty() {
+        assertThat(itemService.search("   ")).isEmpty();
+        verify(itemRepository, never()).search(any());
     }
 
     @Test
-    @DisplayName("updateItem - должен выбрасывать AccessException, если пользователь не владелец")
-    void updateItem_shouldThrowAccessException_whenUserNotOwner() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(booker));
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+    void search_withText_returnsResults() {
+        when(itemRepository.search("drill")).thenReturn(List.of(item(5L, owner())));
 
-        assertThatThrownBy(() -> itemService.updateItem(2L, 1L, updateItemRequest))
-                .isInstanceOf(AccessException.class)
-                .hasMessageContaining("Не является владельцем");
+        List<ItemDto> result = itemService.search("drill");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getName()).isEqualTo("Drill");
     }
 
     @Test
-    @DisplayName("deleteItem - должен удалять вещь")
-    void deleteItem_shouldDeleteItem() {
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+    void addComment_success() {
+        User author = User.builder().id(2L).name("Author").email("a@mail.com").build();
+        Item itm = item(5L, owner());
+        CommentDto dto = CommentDto.builder().text("Nice").build();
+        when(userRepository.findById(2L)).thenReturn(Optional.of(author));
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(itm));
+        when(bookingRepository.findCompletedBooking(eq(2L), eq(5L), eq(BookingStatus.APPROVED), any()))
+                .thenReturn(Optional.of(Booking.builder().id(1L).build()));
+        when(commentRepository.save(any(Comment.class))).thenAnswer(inv -> {
+            Comment c = inv.getArgument(0);
+            c.setId(50L);
+            return c;
+        });
 
-        itemService.deleteItem(1L, 1L);
+        CommentDto result = itemService.addComment(2L, 5L, dto);
 
-        verify(itemRepository).deleteById(1L);
+        assertThat(result.getId()).isEqualTo(50L);
+        assertThat(result.getText()).isEqualTo("Nice");
+        assertThat(result.getAuthorName()).isEqualTo("Author");
+        assertThat(result.getCreated()).isNotNull();
     }
 
     @Test
-    @DisplayName("deleteItem - должен выбрасывать AccessException, если пользователь не владелец")
-    void deleteItem_shouldThrowAccessException_whenUserNotOwner() {
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+    void addComment_noCompletedBooking_throwsBadRequest() {
+        User author = User.builder().id(2L).name("Author").email("a@mail.com").build();
+        Item itm = item(5L, owner());
+        CommentDto dto = CommentDto.builder().text("Nice").build();
+        when(userRepository.findById(2L)).thenReturn(Optional.of(author));
+        when(itemRepository.findById(5L)).thenReturn(Optional.of(itm));
+        when(bookingRepository.findCompletedBooking(eq(2L), eq(5L), eq(BookingStatus.APPROVED), any()))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> itemService.deleteItem(1L, 2L))
-                .isInstanceOf(AccessException.class)
-                .hasMessageContaining("Не является владельцем");
+        assertThatThrownBy(() -> itemService.addComment(2L, 5L, dto))
+                .isInstanceOf(BadRequestException.class);
+        verify(commentRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("getItem - должен возвращать вещь с бронированиями для владельца")
-    void getItem_shouldReturnItemWithBookingsForOwner() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(itemMapper.toItemBooking(any(Item.class))).thenReturn(itemBooking);
-        when(commentRepository.findByItem_ItemIdOrderByCreatedDesc(1L)).thenReturn(List.of(comment));
-        when(commentMapper.toCommentDto(any(Comment.class))).thenReturn(commentDto);
+    void addComment_userNotFound_throwsNotFound() {
+        when(userRepository.findById(2L)).thenReturn(Optional.empty());
 
-        ItemBooking result = itemService.getItem(1L, 1L);
-
-        assertThat(result.getId()).isEqualTo(1L);
-    }
-
-    @Test
-    @DisplayName("getItem - должен возвращать вещь без бронирований для не-владельца")
-    void getItem_shouldReturnItemWithoutBookingsForNonOwner() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(booker));
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(itemMapper.toItemBooking(any(Item.class))).thenReturn(itemBooking);
-        when(commentRepository.findByItem_ItemIdOrderByCreatedDesc(1L)).thenReturn(List.of(comment));
-        when(commentMapper.toCommentDto(any(Comment.class))).thenReturn(commentDto);
-
-        ItemBooking result = itemService.getItem(2L, 1L);
-
-        assertThat(result.getId()).isEqualTo(1L);
-        verify(bookingRepository, never()).findCurrentByBookerId(
-                anyLong(), any(LocalDateTime.class));
-    }
-
-    @Test
-    @DisplayName("getItems - должен возвращать список вещей владельца")
-    void getItems_shouldReturnOwnerItems() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemRepository.findByOwnerId(eq(1L), any(PageRequest.class)))
-                .thenReturn(new PageImpl<>(List.of(item)));
-        when(itemMapper.toItemBooking(any(Item.class))).thenReturn(itemBooking);
-        when(commentRepository.findByItem_ItemIdOrderByCreatedDesc(1L)).thenReturn(List.of(comment));
-        when(commentMapper.toCommentDto(any(Comment.class))).thenReturn(commentDto);
-
-        Page<ItemBooking> result = itemService.getItems(1L, 0, 10);
-
-        assertThat(result.getContent()).hasSize(1);
-    }
-
-    @Test
-    @DisplayName("searchItems - должен искать вещи по тексту")
-    void searchItems_shouldSearchByText() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemRepository.searchAvailableItems(eq("дрель"), eq(true), any(PageRequest.class)))
-                .thenReturn(new PageImpl<>(List.of(item)));
-        when(itemMapper.toItemDto(any(Item.class))).thenReturn(itemDto);
-
-        Page<ItemDto> result = itemService.searchItems(1L, "дрель", 0, 10);
-
-        assertThat(result.getContent()).hasSize(1);
-    }
-
-    @Test
-    @DisplayName("searchItems - должен возвращать пустую страницу при пустом тексте")
-    void searchItems_shouldReturnEmptyPage_whenTextIsBlank() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-
-        Page<ItemDto> result = itemService.searchItems(1L, "", 0, 10);
-
-        assertThat(result.getContent()).isEmpty();
-    }
-
-
-    @Test
-    @DisplayName("addComment - должен добавлять комментарий, если было бронирование")
-    void addComment_shouldAddComment_whenBookingExists() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(booker));
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(bookingRepository.hasUserBookedItem(
-                eq(2L), eq(1L), any(LocalDateTime.class))).thenReturn(true);
-        when(commentMapper.toCommentEntity(any(NewCommentRequest.class))).thenReturn(comment);
-        when(commentRepository.save(any(Comment.class))).thenReturn(comment);
-        when(commentMapper.toCommentDto(any(Comment.class))).thenReturn(commentDto);
-
-        CommentDto result = itemService.addComment(2L, 1L, commentRequest);
-
-        assertThat(result.getId()).isEqualTo(1L);
-        verify(commentRepository).save(any(Comment.class));
-    }
-
-    @Test
-    @DisplayName("addComment - должен выбрасывать AccessException, если не было бронирования")
-    void addComment_shouldThrowAccessException_whenNoBooking() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(booker));
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(bookingRepository.hasUserBookedItem(
-                eq(2L), eq(1L), any(LocalDateTime.class))).thenReturn(false);
-
-        assertThatThrownBy(() -> itemService.addComment(2L, 1L, commentRequest))
-                .isInstanceOf(AccessException.class)
-                .hasMessageContaining("не бронировал");
-    }
-
-    @Test
-    @DisplayName("getItemEntity - должен возвращать предмет по ID")
-    void getItemEntity_shouldReturnItem_whenFound() {
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-
-        Item result = itemService.getItemEntity(1L);
-
-        assertThat(result).isNotNull();
-        assertThat(result.getItemId()).isEqualTo(1L);
-        assertThat(result.getName()).isEqualTo("Дрель");
-        verify(itemRepository).findById(1L);
-    }
-
-    @Test
-    @DisplayName("getItemEntity - должен выбрасывать NotFoundException, если предмет не найден")
-    void getItemEntity_shouldThrowNotFoundException_whenNotFound() {
-        when(itemRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> itemService.getItemEntity(99L))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("не найден")
-                .hasMessageContaining("99");
-    }
-
-    @Test
-    @DisplayName("validateItem - должен выбрасывать NotFoundException при добавлении несуществующего предмета")
-    void validateItem_shouldThrowNotFoundException_whenAddItemNotFound() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> itemService.getItem(1L, 99L))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("не найден")
-                .hasMessageContaining("99");
-    }
-
-    @Test
-    @DisplayName("validateItem - должен выбрасывать NotFoundException при обновлении несуществующего предмета")
-    void validateItem_shouldThrowNotFoundException_whenUpdateItemNotFound() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
-        when(itemRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> itemService.updateItem(1L, 99L, updateItemRequest))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("не найден")
-                .hasMessageContaining("99");
-    }
-
-    @Test
-    @DisplayName("validateItem - должен выбрасывать NotFoundException при удалении несуществующего предмета")
-    void validateItem_shouldThrowNotFoundException_whenDeleteItemNotFound() {
-        when(itemRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> itemService.deleteItem(99L, 1L))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("не найден")
-                .hasMessageContaining("99");
+        assertThatThrownBy(() -> itemService.addComment(2L, 5L, CommentDto.builder().text("x").build()))
+                .isInstanceOf(NotFoundException.class);
     }
 }
